@@ -1,37 +1,78 @@
 extends Node2D
-## NPC con el que el jugador puede hablar presionando E (acción "interact").
-## Cuando el jugador entra al InteractiveArea y presiona E, se muestra
-## el panel de diálogo. Al alejarse, el panel se oculta.
 
-@export var npc_name: String = "Profesor"
-@export_multiline var dialog_text: String = "¡Hola, guardián! Los cristales están protegidos por los guardias. Recupera los 3 cristales y vuelve conmigo."
+@export var npc_name: String = "Anciano"
 
 @onready var interactive_area: Area2D = $InteractiveArea
-
-var player_in_range: bool = false
-
+var player_nearby: bool = false
 
 func _ready() -> void:
-	interactive_area.body_entered.connect(_on_body_entered)
-	interactive_area.body_exited.connect(_on_body_exited)
+	if not interactive_area.body_entered.is_connected(_on_interactive_area_body_entered):
+		interactive_area.body_entered.connect(
+			_on_interactive_area_body_entered
+		)
+	if not interactive_area.body_exited.is_connected(_on_interactive_area_body_exited):
+		interactive_area.body_exited.connect(
+			_on_interactive_area_body_exited
+		)
+	
+func _process(_delta: float) -> void:
+	if player_nearby and Input.is_action_just_pressed("interact"):
+		var dialogue_ui = get_dialogue_ui()
+		if dialogue_ui != null and dialogue_ui.is_open:
+			dialogue_ui.next_dialogue()
+		else:
+			interact()
 
+func get_dialogue_ui() -> Node:
+	return get_tree().get_first_node_in_group("dialogue_ui")
 
-func _unhandled_input(event: InputEvent) -> void:
-	if player_in_range and event.is_action_pressed("interact"):
-		var dialog_box := get_tree().get_first_node_in_group("dialog_box")
-		if dialog_box:
-			dialog_box.show_dialog(npc_name, dialog_text)
-		get_viewport().set_input_as_handled()
+func interact() -> void:
+	var dialogue_ui = get_dialogue_ui()
+	if dialogue_ui == null:
+		return
 
+	var dialogues: Array[String] = []
 
-func _on_body_entered(body: Node2D) -> void:
+	match QuestManager.quest_state:
+		QuestManager.QuestState.NOT_STARTED:
+			dialogues = [
+				"¡Hola, viajero! Los guardias han robado los cristales sagrados.",
+				"Necesito que recojas %d cristales y me los traigas." % QuestManager.required_crystals,
+				"Ten cuidado con los guardias que los protegen."
+			]
+			QuestManager.start_quest()
+
+		QuestManager.QuestState.ACTIVE:
+			dialogues = [
+				"Aún te faltan cristales por recoger.",
+				"Llevas %d de %d cristales." % [
+					QuestManager.collected_crystals,
+					QuestManager.required_crystals
+				]
+			]
+
+		QuestManager.QuestState.READY_TO_DELIVER:
+			dialogues = [
+				"¡Has recuperado todos los cristales!",
+				"Muchas gracias, guardián. La aldea está a salvo."
+			]
+			QuestManager.complete_quest()
+
+		QuestManager.QuestState.COMPLETED:
+			dialogues = [
+				"Gracias de nuevo por tu ayuda, guardián del cristal."
+			]
+
+	dialogue_ui.show_dialogue(npc_name, dialogues)
+
+func _on_interactive_area_body_entered(body: Node2D) -> void:
 	if body.is_in_group("player"):
-		player_in_range = true
+		player_nearby = true
 
 
-func _on_body_exited(body: Node2D) -> void:
+func _on_interactive_area_body_exited(body: Node2D) -> void:
 	if body.is_in_group("player"):
-		player_in_range = false
-		var dialog_box := get_tree().get_first_node_in_group("dialog_box")
-		if dialog_box:
-			dialog_box.hide_dialog()
+		player_nearby = false
+		var dialogue_ui = get_dialogue_ui()
+		if dialogue_ui != null and dialogue_ui.is_open:
+			dialogue_ui.close_dialogue()
