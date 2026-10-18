@@ -93,16 +93,6 @@ func _initialize_navigation() -> void:
 	if not is_inside_tree():
 		return
 
-	# Esperar a que el NavigationServer sincronice el mapa
-	# (iteration_id > 0) para que el agente pueda generar su ruta.
-	var navigation_map: RID = navigation_agent.get_navigation_map()
-
-	while NavigationServer2D.map_get_iteration_id(navigation_map) == 0:
-		await get_tree().physics_frame
-
-		if not is_inside_tree():
-			return
-
 	navigation_ready = true
 
 	navigation_agent.target_position = home_position
@@ -118,12 +108,6 @@ func _physics_process(delta: float) -> void:
 		return
 
 	attack_timer = maxf(attack_timer - delta, 0.0)
-
-	# Si el jugador ya perdió toda su vida, dejar de atacarlo.
-	if player != null and not is_player_alive():
-		player = null
-		if state == State.CHASE or state == State.ATTACK or state == State.FLEE:
-			change_state(State.RETURN)
 
 	if state == State.CHASE or state == State.ATTACK or state == State.FLEE:
 		evaluate_decision()
@@ -168,10 +152,7 @@ func process_patrol() -> void:
 
 	navigate_to(target, patrol_speed)
 
-	if (
-		global_position.distance_to(target) <= arrival_distance
-		or navigation_agent.is_navigation_finished()
-	):
+	if global_position.distance_to(target) <= arrival_distance:
 		velocity = Vector2.ZERO
 
 		patrol_index = (
@@ -182,7 +163,7 @@ func process_patrol() -> void:
 
 
 func process_chase() -> void:
-	if not is_player_alive():
+	if not is_instance_valid(player):
 		player = null
 		change_state(State.RETURN)
 		return
@@ -201,7 +182,7 @@ func process_chase() -> void:
 func process_attack() -> void:
 	velocity = Vector2.ZERO
 
-	if not is_player_alive():
+	if not is_instance_valid(player):
 		player = null
 		change_state(State.RETURN)
 		return
@@ -233,10 +214,7 @@ func process_return() -> void:
 		patrol_speed
 	)
 
-	if (
-		global_position.distance_to(home_position) <= arrival_distance
-		or navigation_agent.is_navigation_finished()
-	):
+	if global_position.distance_to(home_position) <= arrival_distance:
 		velocity = Vector2.ZERO
 		change_state(State.IDLE)
 		is_retreating = false
@@ -312,9 +290,6 @@ func _on_detection_body_entered(body: Node2D) -> void:
 	if body.is_in_group("player"):
 		if body is CharacterBody2D:
 			player = body as CharacterBody2D
-			if not is_player_alive():
-				player = null
-				return
 			if not is_retreating:
 				change_state(State.CHASE)
 
@@ -408,8 +383,7 @@ func evaluate_decision() -> void:
 	if is_dead:
 		return
 
-	if not is_player_alive():
-		player = null
+	if not is_instance_valid(player):
 		if state == State.CHASE or state == State.ATTACK or state == State.FLEE:
 			change_state(State.RETURN)
 		return
