@@ -75,14 +75,6 @@ func _ready() -> void:
 	navigation_agent.target_desired_distance = 10.0
 	navigation_agent.avoidance_enabled = false
 
-	detection_area.body_entered.connect(
-		_on_detection_body_entered
-	)
-
-	detection_area.body_exited.connect(
-		_on_detection_body_exited
-	)
-
 	# Estado inicial.
 	state = State.IDLE
 	idle_timer = idle_duration
@@ -262,9 +254,19 @@ func navigate_to(
 		velocity = Vector2.ZERO
 		return
 
+	# Ajustar el destino al punto más cercano dentro de la
+	# región de navegación para que siempre se pueda generar la ruta.
+	var navigation_map: RID = navigation_agent.get_navigation_map()
+	var reachable_target: Vector2 = (
+		NavigationServer2D.map_get_closest_point(
+			navigation_map,
+			target
+		)
+	)
+
 	# Solo actualizar destino si ha cambiado.
-	if navigation_agent.target_position.distance_to(target) > repath_distance:
-		navigation_agent.target_position = target
+	if navigation_agent.target_position.distance_to(reachable_target) > repath_distance:
+		navigation_agent.target_position = reachable_target
 
 	# Comprobar si terminó el recorrido.
 	if navigation_agent.is_navigation_finished():
