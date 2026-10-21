@@ -22,6 +22,8 @@ enum State {
 
 #VARIABLES EXPORTADAS DEL NIVEL DE VIDA DEL GUARDIA
 @export var max_health: int = 100
+# ID único del guardia (se genera solo si se deja vacío).
+@export var guard_id: String = ""
 @export_range(0.1, 0.9, 0.05) var flee_threeshold: float = 0.3
 @export var flee_speed: float = 145.0
 @export var flee_distance: float = 180.0
@@ -57,6 +59,11 @@ var navigation_ready: bool = false
 var is_retreating: bool = false
 
 func _ready() -> void:
+	# ID estable para el sistema de guardado.
+	if guard_id.is_empty():
+		guard_id = _generate_id()
+	add_to_group("guards")
+
 	home_position = global_position
 
 	health = max_health
@@ -74,6 +81,14 @@ func _ready() -> void:
 	navigation_agent.path_desired_distance = 8.0
 	navigation_agent.target_desired_distance = 10.0
 	navigation_agent.avoidance_enabled = false
+
+	detection_area.body_entered.connect(
+		_on_detection_body_entered
+	)
+
+	detection_area.body_exited.connect(
+		_on_detection_body_exited
+	)
 
 	# Estado inicial.
 	state = State.IDLE
@@ -229,8 +244,17 @@ func take_damage(amount: int) -> void:
 		return
 	#evaluate_decision()
 	
+func _generate_id() -> String:
+	if owner != null:
+		var level_name: String = owner.scene_file_path.get_file().get_basename()
+		return "%s/%s" % [level_name, str(owner.get_path_to(self))]
+	return str(name)
+
 func die() -> void:
 	is_dead = true
+
+	# Guardar que este enemigo fue eliminado.
+	QuestManager.register_defeated_enemy(guard_id)
 	velocity = Vector2.ZERO
 	# Dejar de detectar y atacar
 	detection_area.set_deferred("monitoring", false)
@@ -254,19 +278,9 @@ func navigate_to(
 		velocity = Vector2.ZERO
 		return
 
-	# Ajustar el destino al punto más cercano dentro de la
-	# región de navegación para que siempre se pueda generar la ruta.
-	var navigation_map: RID = navigation_agent.get_navigation_map()
-	var reachable_target: Vector2 = (
-		NavigationServer2D.map_get_closest_point(
-			navigation_map,
-			target
-		)
-	)
-
 	# Solo actualizar destino si ha cambiado.
-	if navigation_agent.target_position.distance_to(reachable_target) > repath_distance:
-		navigation_agent.target_position = reachable_target
+	if navigation_agent.target_position.distance_to(target) > repath_distance:
+		navigation_agent.target_position = target
 
 	# Comprobar si terminó el recorrido.
 	if navigation_agent.is_navigation_finished():
